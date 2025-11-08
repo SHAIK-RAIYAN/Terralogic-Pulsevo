@@ -1,21 +1,42 @@
 """
-Generate realistic sample data for PULSEVO dashboard
+Generate realistic sample data for PULSEVO dashboard using Supabase
 """
-from app import app, db
-from models import User, Task
+import os
+import sys
+from database import init_db, get_supabase
+from flask import Flask
 from datetime import datetime, timedelta
 import random
 
+# Fix Windows console encoding for emojis
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+
+# Create a minimal Flask app for context
+app = Flask(__name__)
+
 def clear_data():
     """Clear existing data"""
-    with app.app_context():
-        Task.query.delete()
-        User.query.delete()
-        db.session.commit()
-        print("✅ Cleared existing data")
+    supabase = get_supabase()
+    
+    # Delete all tasks first (due to foreign key constraint)
+    try:
+        supabase.table('tasks').delete().neq('task_id', '').execute()
+    except:
+        pass  # Table might be empty
+    
+    # Delete all users
+    try:
+        supabase.table('users').delete().neq('user_id', '').execute()
+    except:
+        pass  # Table might be empty
+    
+    print("✅ Cleared existing data")
 
 def generate_users():
     """Generate sample users - 30 users across 4 teams"""
+    supabase = get_supabase()
+    
     users_data = [
         # Your Team (10 members)
         {'name': 'Alice Johnson', 'role': 'Frontend Developer', 'team': 'Your Team'},
@@ -57,34 +78,38 @@ def generate_users():
     ]
     
     users = []
-    with app.app_context():
-        for idx, user_data in enumerate(users_data, 1):
-            # Create initials
-            name_parts = user_data['name'].split()
-            initials = ''.join([part[0] for part in name_parts])
-            
-            user = User(
-                user_id=f'USER-{idx:03d}',
-                name=user_data['name'],
-                email=f"{user_data['name'].lower().replace(' ', '.')}@company.com",
-                initials=initials,
-                role=user_data['role'],
-                team=user_data['team'],
-                is_active=True
-            )
-            db.session.add(user)
-            users.append(user)
+    for idx, user_data in enumerate(users_data, 1):
+        # Create initials
+        name_parts = user_data['name'].split()
+        initials = ''.join([part[0] for part in name_parts])
         
-        db.session.commit()
-        print(f"✅ Created {len(users)} users across 4 teams")
-        print(f"   • Your Team: 10 members")
-        print(f"   • Alpha Team: 8 members")
-        print(f"   • Beta Team: 6 members")
-        print(f"   • Gamma Team: 6 members")
-        return users
+        user = {
+            'user_id': f'USER-{idx:03d}',
+            'name': user_data['name'],
+            'email': f"{user_data['name'].lower().replace(' ', '.')}@company.com",
+            'initials': initials,
+            'role': user_data['role'],
+            'team': user_data['team'],
+            'is_active': True
+        }
+        
+        supabase.table('users').insert(user).execute()
+        users.append(user)
+    
+    print(f"✅ Created {len(users)} users across 4 teams")
+    print(f"   • Your Team: 10 members")
+    print(f"   • Alpha Team: 8 members")
+    print(f"   • Beta Team: 6 members")
+    print(f"   • Gamma Team: 6 members")
+    return users
 
 def generate_tasks():
     """Generate 2000 realistic tasks with varied time ranges"""
+    supabase = get_supabase()
+    
+    # Get all users
+    users_response = supabase.table('users').select('user_id').execute()
+    user_ids = [user['user_id'] for user in users_response.data]
     
     # Expanded task templates with more variety
     task_templates = [
@@ -155,120 +180,126 @@ def generate_tasks():
     # Status distribution: ~35% Open, ~28% In Progress, ~30% Completed, ~7% Blocked
     statuses = ['Open'] * 35 + ['In Progress'] * 28 + ['Completed'] * 30 + ['Blocked'] * 7
     
-    with app.app_context():
-        users = User.query.all()
-        user_ids = [user.user_id for user in users]
+    tasks = []
+    num_tasks = 2000
+    
+    print(f"⏳ Generating {num_tasks} tasks with realistic data...")
+    
+    for idx in range(1, num_tasks + 1):
+        # Cycle through templates and add variation
+        template = task_templates[(idx - 1) % len(task_templates)]
+        status = random.choice(statuses)
         
-        tasks = []
-        num_tasks = 2000
+        # More realistic time ranges: 1-90 days ago
+        days_ago = random.randint(1, 90)
+        created_date = datetime.now() - timedelta(days=days_ago)
         
-        print(f"⏳ Generating {num_tasks} tasks with realistic data...")
+        # Add some time variation (different times of day)
+        created_date = created_date.replace(
+            hour=random.randint(8, 18),
+            minute=random.randint(0, 59),
+            second=random.randint(0, 59)
+        )
         
-        for idx in range(1, num_tasks + 1):
-            # Cycle through templates and add variation
-            template = task_templates[(idx - 1) % len(task_templates)]
-            status = random.choice(statuses)
-            
-            # More realistic time ranges: 1-90 days ago
-            days_ago = random.randint(1, 90)
-            created_date = datetime.now() - timedelta(days=days_ago)
-            
-            # Add some time variation (different times of day)
-            created_date = created_date.replace(
-                hour=random.randint(8, 18),
-                minute=random.randint(0, 59),
-                second=random.randint(0, 59)
+        start_date = None
+        completed_date = None
+        blocked_reason = None
+        
+        if status in ['In Progress', 'Completed']:
+            # Start date: 0-5 days after creation
+            start_date = created_date + timedelta(
+                days=random.randint(0, 5),
+                hours=random.randint(0, 23)
             )
-            
-            start_date = None
-            completed_date = None
-            blocked_reason = None
-            
-            if status in ['In Progress', 'Completed']:
-                # Start date: 0-5 days after creation
-                start_date = created_date + timedelta(
-                    days=random.randint(0, 5),
-                    hours=random.randint(0, 23)
-                )
-            
-            if status == 'Completed':
-                # Completion time: 4-240 hours after start (realistic work times)
-                work_hours = random.choice([4, 8, 12, 16, 24, 40, 80, 120, 160, 240])
-                completed_date = start_date + timedelta(hours=work_hours)
-            
-            if status == 'Blocked':
-                blocked_reason = random.choice([
-                    'Waiting for API access from external team',
-                    'Dependency on TASK-' + str(random.randint(1, idx-1)) if idx > 1 else 'Dependency on another task',
-                    'Waiting for client approval',
-                    'Technical blocker - need architecture decision',
-                    'Waiting for design assets',
-                    'Blocked by infrastructure issues',
-                    'Pending security review',
-                    'Missing requirements clarification',
-                    'Third-party service integration pending'
-                ])
-            
-            # Due date: 7-30 days after creation
-            due_date = created_date + timedelta(days=random.randint(7, 30))
-            
-            # Varied estimated hours based on priority
-            if template['priority'] == 'High':
-                estimated_hours = random.choice([8, 16, 24, 40])
-            elif template['priority'] == 'Medium':
-                estimated_hours = random.choice([4, 8, 16, 24])
-            else:
-                estimated_hours = random.choice([2, 4, 8])
-            
-            # Add task number variation to task names
-            task_name_variations = [
-                template['name'],
-                f"{template['name']} - Phase {random.randint(1, 3)}",
-                f"{template['name']} v{random.randint(1, 5)}",
-                template['name'],  # Keep original more often
-                template['name'],
-            ]
-            
-            task = Task(
-                task_id=f'TASK-{idx:04d}',
-                task_name=random.choice(task_name_variations),
-                description=f"Detailed description for {template['name']}. This task requires proper planning and implementation. Task ID: {idx}",
-                status=status,
-                priority=template['priority'],
-                project=template['project'],
-                assigned_to=random.choice(user_ids),
-                created_date=created_date,
-                due_date=due_date,
-                start_date=start_date,
-                completed_date=completed_date,
-                estimated_hours=estimated_hours,
-                tags=template['tags'],
-                blocked_reason=blocked_reason,
-                comments=f"Task created on {created_date.strftime('%Y-%m-%d')}. Assigned to team member."
-            )
-            db.session.add(task)
-            tasks.append(task)
-            
-            # Commit in batches for better performance
-            if idx % 500 == 0:
-                db.session.commit()
-                print(f"   ✓ Generated {idx}/{num_tasks} tasks...")
         
-        db.session.commit()
-        print(f"✅ Created {len(tasks)} tasks with realistic time ranges")
+        if status == 'Completed':
+            # Completion time: 4-240 hours after start (realistic work times)
+            work_hours = random.choice([4, 8, 12, 16, 24, 40, 80, 120, 160, 240])
+            completed_date = start_date + timedelta(hours=work_hours)
         
-        # Print statistics
-        print("\n📊 Task Statistics:")
-        print(f"   Open: {Task.query.filter_by(status='Open').count()}")
-        print(f"   In Progress: {Task.query.filter_by(status='In Progress').count()}")
-        print(f"   Completed: {Task.query.filter_by(status='Completed').count()}")
-        print(f"   Blocked: {Task.query.filter_by(status='Blocked').count()}")
-        print(f"   Total: {Task.query.count()}")
+        if status == 'Blocked':
+            blocked_reason = random.choice([
+                'Waiting for API access from external team',
+                f'Dependency on TASK-{random.randint(1, idx-1):04d}' if idx > 1 else 'Dependency on another task',
+                'Waiting for client approval',
+                'Technical blocker - need architecture decision',
+                'Waiting for design assets',
+                'Blocked by infrastructure issues',
+                'Pending security review',
+                'Missing requirements clarification',
+                'Third-party service integration pending'
+            ])
+        
+        # Due date: 7-30 days after creation
+        due_date = created_date + timedelta(days=random.randint(7, 30))
+        
+        # Varied estimated hours based on priority
+        if template['priority'] == 'High':
+            estimated_hours = random.choice([8, 16, 24, 40])
+        elif template['priority'] == 'Medium':
+            estimated_hours = random.choice([4, 8, 16, 24])
+        else:
+            estimated_hours = random.choice([2, 4, 8])
+        
+        # Add task number variation to task names
+        task_name_variations = [
+            template['name'],
+            f"{template['name']} - Phase {random.randint(1, 3)}",
+            f"{template['name']} v{random.randint(1, 5)}",
+            template['name'],  # Keep original more often
+            template['name'],
+        ]
+        
+        task = {
+            'task_id': f'TASK-{idx:04d}',
+            'task_name': random.choice(task_name_variations),
+            'description': f"Detailed description for {template['name']}. This task requires proper planning and implementation. Task ID: {idx}",
+            'status': status,
+            'priority': template['priority'],
+            'project': template['project'],
+            'assigned_to': random.choice(user_ids),
+            'created_date': created_date.isoformat(),
+            'due_date': due_date.isoformat(),
+            'start_date': start_date.isoformat() if start_date else None,
+            'completed_date': completed_date.isoformat() if completed_date else None,
+            'estimated_hours': estimated_hours,
+            'tags': template['tags'],
+            'blocked_reason': blocked_reason,
+            'comments': f"Task created on {created_date.strftime('%Y-%m-%d')}. Assigned to team member."
+        }
+        
+        tasks.append(task)
+        
+        # Batch insert for better performance (insert every 100 tasks)
+        if idx % 100 == 0:
+            supabase.table('tasks').insert(tasks[-100:]).execute()
+            print(f"   ✓ Generated {idx}/{num_tasks} tasks...")
+    
+    # Insert remaining tasks
+    if len(tasks) % 100 != 0:
+        remaining = tasks[-(len(tasks) % 100):]
+        supabase.table('tasks').insert(remaining).execute()
+    
+    print(f"✅ Created {len(tasks)} tasks with realistic time ranges")
+    
+    # Print statistics
+    tasks_response = supabase.table('tasks').select('status').execute()
+    all_tasks = tasks_response.data
+    
+    print("\n📊 Task Statistics:")
+    print(f"   Open: {sum(1 for t in all_tasks if t['status'] == 'Open')}")
+    print(f"   In Progress: {sum(1 for t in all_tasks if t['status'] == 'In Progress')}")
+    print(f"   Completed: {sum(1 for t in all_tasks if t['status'] == 'Completed')}")
+    print(f"   Blocked: {sum(1 for t in all_tasks if t['status'] == 'Blocked')}")
+    print(f"   Total: {len(all_tasks)}")
 
 def seed_all():
     """Run all seed functions"""
     print("🌱 Starting database seeding...")
     print("="*50)
+    
+    # Initialize database connection
+    init_db(app)
     
     clear_data()
     generate_users()
@@ -280,4 +311,3 @@ def seed_all():
 
 if __name__ == '__main__':
     seed_all()
-
