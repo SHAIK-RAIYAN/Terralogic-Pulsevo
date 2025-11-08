@@ -71,7 +71,7 @@ PULSEVO/
 
 1. **Navigate to backend directory**
 ```bash
-cd /Users/kowshik/Desktop/Hackathon/backend
+cd /Terralogic-Pulsevo/backend
 ```
 
 2. **Install Python dependencies**
@@ -106,7 +106,7 @@ The backend will run on **http://localhost:5000**
 
 2. **Navigate to frontend directory**
 ```bash
-cd /Users/kowshik/Desktop/Hackathon/frontend
+cd /Terralogic-Pulsevo/frontend
 ```
 
 3. **Install Node dependencies**
@@ -288,13 +288,13 @@ MIT License - Feel free to use this project for learning and development
 
 ```bash
 # Terminal 1 - Backend
-cd /Users/kowshik/Desktop/Hackathon/backend
+cd /Terralogic-Pulsevo/backend
 pip3 install -r requirements.txt
 python3 seed_data.py
 python3 app.py
 
 # Terminal 2 - Frontend  
-cd /Users/kowshik/Desktop/Hackathon/frontend
+cd /Terralogic-Pulsevo/frontend
 npm install
 npm start
 ```
