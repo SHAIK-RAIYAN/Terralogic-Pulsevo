@@ -1,30 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import './Overview.css';
-import { getOverview, getDistribution, getTrends, getTeamPerformance } from '../api/client';
+import { getOverview, getDistribution, getTrends, getTeamPerformance, getTeams } from '../api/client';
 import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, Clock } from 'lucide-react';
+import { DateFilterContext } from '../App';
 
 function Overview() {
+  const { dateFilter } = useContext(DateFilterContext);
   const [metrics, setMetrics] = useState(null);
   const [distribution, setDistribution] = useState([]);
   const [trends, setTrends] = useState([]);
   const [teamPerformance, setTeamPerformance] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState('all');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchTeams();
+  }, []);
 
   useEffect(() => {
     fetchData();
     // Auto-refresh every 10 seconds
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [dateFilter, selectedTeam]);
+
+  const fetchTeams = async () => {
+    try {
+      const response = await getTeams();
+      setTeams(response.data);
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+    }
+  };
 
   const fetchData = async () => {
     try {
       const [metricsRes, distRes, trendsRes, teamRes] = await Promise.all([
-        getOverview(),
-        getDistribution(),
-        getTrends(),
-        getTeamPerformance()
+        getOverview(dateFilter),
+        getDistribution(dateFilter),
+        getTrends(dateFilter),
+        getTeamPerformance(dateFilter, selectedTeam)
       ]);
       
       setMetrics(metricsRes.data);
@@ -34,12 +51,28 @@ function Overview() {
       setLoading(false);
     } catch (error) {
       console.error('Error fetching overview data:', error);
+      // Set default empty data to prevent crashes
+      setMetrics({
+        open_tasks: 0,
+        open_change: 0,
+        in_progress: 0,
+        progress_change: 0,
+        completed_today: 0,
+        today_change: 0,
+        completion_rate: 0,
+        rate_change: 0,
+        total_tasks: 0
+      });
       setLoading(false);
     }
   };
 
   if (loading) {
     return <div className="loading">Loading dashboard...</div>;
+  }
+
+  if (!metrics) {
+    return <div className="loading">Unable to load data. Please check your connection.</div>;
   }
 
   return (
@@ -65,7 +98,6 @@ function Overview() {
           value={metrics.completed_today}
           change={metrics.today_change}
           color="green"
-          subtitle="3:00 - 4:00 PM"
         />
         <MetricCard
           title="Completion Rate"
@@ -112,7 +144,7 @@ function Overview() {
 
         {/* 7-Day Trend Analysis */}
         <div className="chart-card">
-          <h3 className="chart-title">7-Day Trend Analysis</h3>
+          <h3 className="chart-title">Trend Analysis</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={trends}>
               <XAxis dataKey="date" stroke="#6b7280" />
@@ -147,15 +179,27 @@ function Overview() {
           <div className="trend-stats">
             <div className="stat">
               <span className="stat-label">Avg. Daily Completion</span>
-              <span className="stat-value">2.4 tasks</span>
+              <span className="stat-value">
+                {trends.length > 0 
+                  ? (trends.reduce((sum, t) => sum + t.completed, 0) / trends.length).toFixed(1)
+                  : '0.0'} tasks
+              </span>
             </div>
             <div className="stat">
               <span className="stat-label">Avg. Daily Creation</span>
-              <span className="stat-value">4.1 tasks</span>
+              <span className="stat-value">
+                {trends.length > 0 
+                  ? (trends.reduce((sum, t) => sum + t.created, 0) / trends.length).toFixed(1)
+                  : '0.0'} tasks
+              </span>
             </div>
             <div className="stat">
               <span className="stat-label">Avg. In Progress</span>
-              <span className="stat-value">7.6 tasks</span>
+              <span className="stat-value">
+                {trends.length > 0 
+                  ? (trends.reduce((sum, t) => sum + t.in_progress, 0) / trends.length).toFixed(1)
+                  : '0.0'} tasks
+              </span>
             </div>
           </div>
         </div>
@@ -163,7 +207,27 @@ function Overview() {
 
       {/* Team Performance */}
       <div className="chart-card full-width">
-        <h3 className="chart-title">Team Performance</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 className="chart-title">Team Performance</h3>
+          <select 
+            value={selectedTeam}
+            onChange={(e) => setSelectedTeam(e.target.value)}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: '1px solid #2a2a3e',
+              background: '#1a1a2e',
+              color: '#e5e7eb',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="all">All Teams</option>
+            {teams.map((team) => (
+              <option key={team} value={team}>{team}</option>
+            ))}
+          </select>
+        </div>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={teamPerformance}>
             <XAxis dataKey="name" stroke="#6b7280" />

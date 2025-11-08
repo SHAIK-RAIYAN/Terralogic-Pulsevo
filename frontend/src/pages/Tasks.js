@@ -1,27 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import './Tasks.css';
 import { getTasks, getUsers, getProjectStats } from '../api/client';
 import { Search, Upload, TrendingUp, TrendingDown } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { DateFilterContext } from '../App';
 
 function Tasks() {
+  const { dateFilter } = useContext(DateFilterContext);
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [projectStats, setProjectStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Tasks');
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [showUpload, setShowUpload] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const tasksPerPage = 10;
 
-  useEffect(() => {
-    fetchData();
-  }, [statusFilter]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const filters = statusFilter !== 'All Tasks' ? { status: statusFilter } : {};
+      const filters = {};
+      if (statusFilter !== 'All Tasks') filters.status = statusFilter;
+      if (assigneeFilter !== 'all') filters.assigned_to = assigneeFilter;
+      if (searchTerm) filters.search = searchTerm;
+      
       const [tasksRes, usersRes, statsRes] = await Promise.all([
-        getTasks(filters),
+        getTasks(filters, dateFilter),
         getUsers(),
         getProjectStats()
       ]);
@@ -30,15 +37,72 @@ function Tasks() {
       setUsers(usersRes.data);
       setProjectStats(statsRes.data);
       setLoading(false);
+      setCurrentPage(1); // Reset to first page when filters change
     } catch (error) {
       console.error('Error fetching tasks:', error);
       setLoading(false);
     }
+  }, [statusFilter, assigneeFilter, searchTerm, dateFilter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(tasks.length / tasksPerPage);
+  const indexOfLastTask = currentPage * tasksPerPage;
+  const indexOfFirstTask = indexOfLastTask - tasksPerPage;
+  const currentTasks = tasks.slice(indexOfFirstTask, indexOfLastTask);
+
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber);
   };
 
-  const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handlePrevious = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxPagesToShow = 5;
+    
+    if (totalPages <= maxPagesToShow) {
+      // Show all pages if total is less than max
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show first page, current page area, and last page
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        pages.push('...');
+        pages.push(currentPage - 1);
+        pages.push(currentPage);
+        pages.push(currentPage + 1);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
 
   // Prepare project charts data
   const projectTasksData = projectStats.map((p, i) => ({
@@ -93,7 +157,7 @@ function Tasks() {
                 <Search size={18} />
                 <input
                   type="text"
-                  placeholder="Search Name..."
+                  placeholder="Search tasks..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -110,59 +174,106 @@ function Tasks() {
                 <option>Completed</option>
                 <option>Blocked</option>
               </select>
+
+              <select 
+                className="assignee-filter"
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+              >
+                <option value="all">All Assignees</option>
+                {users.map(user => (
+                  <option key={user.user_id} value={user.user_id}>{user.name}</option>
+                ))}
+              </select>
             </div>
 
-            <div className="users-table">
+            <div className="tasks-table">
               <div className="table-header">
-                <div className="th name">Name</div>
-                <div className="th">Assigned</div>
-                <div className="th">Completed</div>
-                <div className="th">Ongoing</div>
-                <div className="th">Trend</div>
+                <div className="th task-name">Task Name</div>
+                <div className="th assignee">Assignee</div>
+                <div className="th status">Status</div>
+                <div className="th priority">Priority</div>
+                <div className="th due-date">Due Date</div>
               </div>
               
               <div className="table-body">
-                {filteredUsers.map((user) => (
-                  <div key={user.user_id} className="table-row">
-                    <div className="td name">
-                      <div className="user-avatar" style={{
-                        background: getAvatarColor(user.initials)
-                      }}>
-                        {user.initials}
+                {tasks.length === 0 ? (
+                  <div className="no-tasks">No tasks found</div>
+                ) : (
+                  currentTasks.map((task) => {
+                    const assignee = users.find(u => u.user_id === task.assigned_to);
+                    return (
+                      <div key={task.task_id} className="table-row">
+                        <div className="td task-name">{task.task_name}</div>
+                        <div className="td assignee">
+                          {assignee && (
+                            <>
+                              <div className="user-avatar-small" style={{
+                                background: getAvatarColor(assignee.initials)
+                              }}>
+                                {assignee.initials}
+                              </div>
+                              <span>{assignee.name}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="td status">
+                          <span className={`status-badge status-${task.status.toLowerCase().replace(' ', '-')}`}>
+                            {task.status}
+                          </span>
+                        </div>
+                        <div className="td priority">
+                          <span className={`priority-badge priority-${task.priority.toLowerCase()}`}>
+                            {task.priority}
+                          </span>
+                        </div>
+                        <div className="td due-date">
+                          {task.due_date ? new Date(task.due_date).toLocaleDateString() : '-'}
+                        </div>
                       </div>
-                      <span>{user.name}</span>
-                    </div>
-                    <div className="td">{user.assigned}</div>
-                    <div className="td">
-                      <span className="badge badge-success">{user.completed}</span>
-                    </div>
-                    <div className="td">
-                      <span className="badge badge-info">{user.in_progress}</span>
-                    </div>
-                    <div className="td trend">
-                      {user.trend > 50 ? (
-                        <span className="trend-up">
-                          <TrendingUp size={14} /> {user.completion_percentage}%
-                        </span>
-                      ) : user.trend === 0 ? (
-                        <span className="trend-neutral">— {user.completion_percentage}%</span>
-                      ) : (
-                        <span className="trend-down">
-                          <TrendingDown size={14} /> {user.completion_percentage}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })
+                )}
               </div>
             </div>
 
-            <div className="pagination">
-              <button className="page-btn">Previous</button>
-              <button className="page-btn active">1</button>
-              <button className="page-btn">2</button>
-              <button className="page-btn">Next</button>
-            </div>
+            {tasks.length > 0 && (
+              <div className="pagination">
+                <button 
+                  className="page-btn" 
+                  onClick={handlePrevious}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </button>
+                
+                {getPageNumbers().map((page, index) => (
+                  page === '...' ? (
+                    <span key={`ellipsis-${index}`} className="page-ellipsis">...</span>
+                  ) : (
+                    <button
+                      key={page}
+                      className={`page-btn ${currentPage === page ? 'active' : ''}`}
+                      onClick={() => handlePageChange(page)}
+                    >
+                      {page}
+                    </button>
+                  )
+                ))}
+                
+                <button 
+                  className="page-btn" 
+                  onClick={handleNext}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </button>
+                
+                <span className="page-info">
+                  Showing {indexOfFirstTask + 1}-{Math.min(indexOfLastTask, tasks.length)} of {tasks.length}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

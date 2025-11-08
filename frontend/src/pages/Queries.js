@@ -7,7 +7,7 @@ function Queries() {
   const [messages, setMessages] = useState([
     {
       type: 'bot',
-      text: "Hello! I'm your AI assistant. Ask me anything about your team's productivity, tasks, or performance metrics.\n\nTry questions like:\n• How many bugs did we close this sprint?\n• What's our team velocity?\n• Show me blocked tasks",
+      text: "Hello! I'm PulseVo AI. Ask me anything about your team's tasks and performance.\n\nTry questions like:\n• How many tasks are currently 'In Progress'?\n• Show me all overdue high-priority tasks\n• What is the status of the 'Mobile App' project?",
       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     }
   ]);

@@ -45,6 +45,10 @@
   border-color: #3a3a4e;
 }
 
+.profile-menu {
+  position: relative;
+}
+
 .profile-button {
   width: 40px;
   height: 40px;
@@ -61,5 +65,46 @@
 .profile-button:hover {
   transform: scale(1.05);
   transition: transform 0.2s;
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
+.profile-email {
+  padding: 8px 12px;
+  color: #94a3b8;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.logout-button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.logout-button:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
